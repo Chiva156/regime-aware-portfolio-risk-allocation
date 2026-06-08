@@ -272,15 +272,7 @@ In a degradation model, a system moves through increasingly damaged states. A co
 
 In this portfolio project, markets move through increasingly fragile regimes. A controller chooses a risk budget and occasionally de-risks. The objective is to balance expected return, volatility, drawdown, tail risk, and transaction costs.
 
-## Why this is credible for a quant-finance pivot
-
-A strong public GitHub project should not claim to have discovered alpha from a few ETFs. Instead, it should demonstrate that advanced stochastic modeling can be turned into a disciplined and reproducible research pipeline.
-
-The message is:
-
-> I can translate stochastic processes, Bayesian regime models, dependence modeling, and stochastic control into an implementable portfolio risk framework.
-
-## What to emphasize in the README and LinkedIn post
+## What to emphasize in the README
 
 - Latent regimes are treated as risk states, not only return predictors.
 - Dependence breakdown is central: correlations are regime-conditioned.
