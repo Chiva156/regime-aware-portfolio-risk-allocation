@@ -17,7 +17,7 @@ class DataConfig:
     tickers: tuple[str, ...] = DEFAULT_TICKERS
     start: str = "2007-01-01"
     end: str | None = None
-    source: Literal["stooq", "yfinance"] = "stooq"
+    source: str = "yfinance"
 
 
 def _as_list(values: Iterable[str]) -> list[str]:
