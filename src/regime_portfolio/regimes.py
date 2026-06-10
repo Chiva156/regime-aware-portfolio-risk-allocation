@@ -109,3 +109,36 @@ def regime_durations(regimes: pd.Series) -> pd.DataFrame:
     switches = regimes.ne(regimes.shift()).cumsum()
     spells = regimes.groupby(switches).agg(regime="first", duration="size")
     return spells.reset_index(drop=True)
+
+
+def smooth_regime_probabilities(
+    probabilities: pd.DataFrame,
+    window: int = 5,
+) -> pd.DataFrame:
+    """Smooth regime probabilities using a rolling mean."""
+    return probabilities.rolling(window=window, min_periods=1).mean()
+
+
+def apply_minimum_regime_duration(
+    regimes: pd.Series,
+    min_duration: int = 5,
+) -> pd.Series:
+    """Merge very short regime runs into the previous regime."""
+    regimes = regimes.copy().dropna().astype(int)
+
+    if regimes.empty:
+        return regimes
+
+    values = regimes.to_numpy().copy()
+    start = 0
+
+    for i in range(1, len(values) + 1):
+        if i == len(values) or values[i] != values[start]:
+            run_length = i - start
+
+            if run_length < min_duration and start > 0:
+                values[start:i] = values[start - 1]
+
+            start = i
+
+    return pd.Series(values, index=regimes.index, name=regimes.name)
