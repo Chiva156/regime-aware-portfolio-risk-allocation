@@ -12,7 +12,12 @@ DEFAULT_TICKERS: tuple[str, ...] = ("SPY", "TLT", "IEF", "GLD", "DBC", "UUP", "S
 
 @dataclass(frozen=True)
 class DataConfig:
-    """Configuration for reproducible public-data loading."""
+    """Configuration for public-market data loading.
+
+    The default source is yfinance for ease of reproducibility in public GitHub
+    and Codespaces environments. Data are intended for research and educational
+    demonstration only, not for production trading.
+    """
 
     tickers: tuple[str, ...] = DEFAULT_TICKERS
     start: str = "2007-01-01"
