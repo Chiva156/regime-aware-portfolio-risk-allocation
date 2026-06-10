@@ -64,7 +64,12 @@ def estimate_transition_matrix(states: pd.Series, n_states: int | None = None) -
         matrix[int(current), int(nxt)] += 1.0
     row_sums = matrix.sum(axis=1, keepdims=True)
     with np.errstate(divide="ignore", invalid="ignore"):
-        matrix = np.divide(matrix, row_sums, where=row_sums > 0)
+        matrix = np.divide(
+            matrix,
+            row_sums,
+            out=np.zeros_like(matrix, dtype=float),
+            where=row_sums > 0,
+        )
     for i in range(n_states):
         if matrix[i].sum() == 0:
             matrix[i, i] = 1.0
