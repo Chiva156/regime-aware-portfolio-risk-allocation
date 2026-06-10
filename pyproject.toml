@@ -11,31 +11,34 @@ requires-python = ">=3.11"
 authors = [
   {name = "Alex Dalla Torre"}
 ]
-license = {text = "MIT"}
+license = {text = "GNU"}
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.11",
-  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: GNU License",
   "Operating System :: OS Independent",
   "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 dependencies = [
-  "numpy>=1.26",
-  "pandas>=2.2,<3.0",
-  "scipy>=1.11",
-  "scikit-learn>=1.4",
-  "matplotlib>=3.8",
-  "pandas-datareader>=0.10",
-  "yfinance>=0.2.40",
-  "hmmlearn>=0.3.2",
+    "numpy>=1.26",
+    "pandas>=2.2,<3.0",
+    "scipy>=1.11",
+    "scikit-learn>=1.4",
+    "matplotlib>=3.8",
+    "plotly>=5.20",
+    "yfinance>=0.2.40",
+    "pandas-datareader>=0.10.0",
+    "cvxpy>=1.4",
+    "hmmlearn>=0.3.2"
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0",
-  "ruff>=0.5",
-  "jupyterlab>=4.0",
-  "ipykernel>=6.0",
+    "pytest>=8.0",
+    "jupyter>=1.0",
+    "ipykernel>=6.29",
+    "ruff>=0.5",
+    "nbconvert>=7.16"
 ]
 portfolio = [
   "PyPortfolioOpt>=1.5",
@@ -45,9 +48,13 @@ portfolio = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
