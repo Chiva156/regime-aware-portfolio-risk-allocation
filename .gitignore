@@ -22,6 +22,13 @@ data/processed/*.csv
 reports/figures/*.png
 reports/figures/*.pdf
 
+# Keep data folder structure and documentation
+!data/README.md
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/sample/.gitkeep
+!data/sample/*.csv
+
 # OS / IDE
 .DS_Store
 .vscode/
