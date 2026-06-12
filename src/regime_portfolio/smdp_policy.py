@@ -36,20 +36,82 @@ def build_stress_states(
     features: pd.DataFrame,
     n_states: int = 4,
     score: pd.Series | None = None,
+    method: str = "tail",
+    quantiles: tuple[float, ...] | None = None,
+    smoothing_window: int = 21,
 ) -> pd.Series:
     """Discretize a continuous stress score into ordered stress states.
 
     State 0 is lowest stress and state n_states - 1 is highest stress.
-    """
 
+    Parameters
+    ----------
+    features:
+        Feature panel used to compute the stress score when ``score`` is not provided.
+    n_states:
+        Number of ordered stress states.
+    score:
+        Optional precomputed continuous stress score.
+    method:
+        ``"equal_frequency"`` creates equally populated states.
+        ``"tail"`` creates rarer high-stress states using upper-tail quantiles.
+    quantiles:
+        Threshold quantiles for ``method="tail"``. For four states, the default
+        is ``(0.50, 0.75, 0.90)``, producing normal/elevated/fragile/crisis states.
+    smoothing_window:
+        Rolling window used to smooth the stress score before discretization.
+    """
     if score is None:
         score = stress_score(features)
-    score = score.dropna()
-    if score.nunique() < n_states:
-        ranks = score.rank(method="first")
+
+    smoothed_score = (
+        score
+        .dropna()
+        .rolling(window=smoothing_window, min_periods=max(2, smoothing_window // 3))
+        .mean()
+        .dropna()
+    )
+
+    if smoothed_score.empty:
+        raise ValueError("stress score is empty after smoothing")
+
+    if method == "equal_frequency":
+        if smoothed_score.nunique() < n_states:
+            ranks = smoothed_score.rank(method="first")
+        else:
+            ranks = smoothed_score
+
+        states = pd.qcut(
+            ranks,
+            q=n_states,
+            labels=False,
+            duplicates="drop",
+        )
+
+    elif method == "tail":
+        if n_states != 4 and quantiles is None:
+            raise ValueError(
+                "Default tail thresholds are defined for n_states=4. "
+                "Pass explicit quantiles for a different number of states."
+            )
+
+        if quantiles is None:
+            quantiles = (0.50, 0.75, 0.90)
+
+        if len(quantiles) != n_states - 1:
+            raise ValueError("quantiles must contain n_states - 1 thresholds")
+
+        thresholds = smoothed_score.quantile(list(quantiles)).to_numpy()
+
+        states = pd.Series(
+            np.searchsorted(thresholds, smoothed_score.to_numpy(), side="right"),
+            index=smoothed_score.index,
+            name="stress_state",
+        )
+
     else:
-        ranks = score
-    states = pd.qcut(ranks, q=n_states, labels=False, duplicates="drop")
+        raise ValueError(f"Unknown stress-state method: {method}")
+
     return states.astype(int).rename("stress_state")
 
 
