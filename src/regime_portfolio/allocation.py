@@ -36,28 +36,135 @@ def inverse_volatility_weight(returns: pd.DataFrame, floor: float = 1e-8) -> pd.
     weights = 1.0 / vol
     return _normalize_weights(weights).rename("weight")
 
+def _regularized_covariance_matrix(returns: pd.DataFrame, ridge: float = 1e-4) -> np.ndarray:
+    """Return a symmetric positive-definite covariance matrix.
+
+    The minimum-variance optimizer is sensitive to nearly singular covariance
+    matrices, especially with highly correlated bond ETFs. This helper makes the
+    covariance matrix numerically safer while preserving the empirical structure.
+    """
+    cov = returns.cov().to_numpy(dtype=float)
+    cov = np.nan_to_num(cov, nan=0.0, posinf=0.0, neginf=0.0)
+    cov = 0.5 * (cov + cov.T)
+
+    n_assets = cov.shape[0]
+    average_variance = float(np.trace(cov) / max(n_assets, 1))
+    ridge_scale = ridge * max(average_variance, 1e-12)
+
+    cov = cov + ridge_scale * np.eye(n_assets)
+
+    min_eigenvalue = float(np.linalg.eigvalsh(cov).min())
+    if min_eigenvalue <= 0.0:
+        cov = cov + (abs(min_eigenvalue) + ridge_scale) * np.eye(n_assets)
+
+    return cov
 
 def minimum_variance_weight(
     returns: pd.DataFrame,
     long_only: bool = True,
-    ridge: float = 1e-6,
+    ridge: float = 1e-4,
 ) -> pd.Series:
-    """Long-only minimum-variance allocation using scipy.
+    """Minimum-variance allocation with robust numerical fallbacks.
 
-    The ridge term stabilizes the covariance matrix in short windows.
+    The optimizer solves the long-only minimum-variance problem when
+    ``long_only=True``. If the numerical optimizer fails, the function falls back
+    to inverse-volatility weights, which correspond to a diagonal covariance
+    approximation.
+
+    The returned Series carries lightweight diagnostics in ``attrs``.
     """
-
     r = _clean_returns(returns)
     assets = returns.columns
+
     if len(assets) == 0:
         raise ValueError("returns must contain at least one asset")
-    if r.shape[0] < 2:
-        return equal_weight(assets)
 
-    cov = r.cov().to_numpy()
-    cov = cov + ridge * np.eye(cov.shape[0])
-    n = cov.shape[0]
-    x0 = np.full(n, 1.0 / n)
+    if r.shape[0] < 2:
+        out = equal_weight(assets)
+        out.attrs["optimizer_status"] = "fallback_equal_weight_insufficient_history"
+        return out
+
+    cov = _regularized_covariance_matrix(r[assets], ridge=ridge)
+    n_assets = len(assets)
+
+    if not long_only:
+        ones = np.ones(n_assets)
+        try:
+            raw = np.linalg.solve(cov, ones)
+            weights = raw / raw.sum()
+            out = pd.Series(weights, index=assets, name="weight")
+            out.attrs["optimizer_status"] = "success_unconstrained_closed_form"
+            return out
+        except np.linalg.LinAlgError:
+            out = inverse_volatility_weight(r[assets])
+            out.attrs["optimizer_status"] = "fallback_inverse_volatility_linalg_error"
+            return out
+
+    def objective(weights: np.ndarray) -> float:
+        return float(weights @ cov @ weights)
+
+    constraints = ({"type": "eq", "fun": lambda weights: np.sum(weights) - 1.0},)
+    bounds = [(0.0, 1.0) for _ in range(n_assets)]
+
+    equal_start = np.full(n_assets, 1.0 / n_assets)
+
+    inverse_vol_start = inverse_volatility_weight(r[assets]).reindex(assets).to_numpy(dtype=float)
+    inverse_vol_start = np.nan_to_num(inverse_vol_start, nan=1.0 / n_assets)
+    inverse_vol_start = inverse_vol_start / inverse_vol_start.sum()
+
+    starts = [equal_start, inverse_vol_start]
+
+    # Add concentrated starts to reduce the chance of SLSQP stopping at the
+    # equal-weight initial point when the covariance surface is ill-conditioned.
+    for i in range(n_assets):
+        start = np.full(n_assets, 0.01 / max(n_assets - 1, 1))
+        start[i] = 0.99
+        starts.append(start / start.sum())
+
+    best_weights: np.ndarray | None = None
+    best_value = np.inf
+    best_message = ""
+
+    for start in starts:
+        result = minimize(
+            objective,
+            x0=start,
+            bounds=bounds,
+            constraints=constraints,
+            method="SLSQP",
+            options={"ftol": 1e-12, "maxiter": 1_000, "disp": False},
+        )
+
+        if not result.success or not np.all(np.isfinite(result.x)):
+            best_message = str(result.message)
+            continue
+
+        candidate = np.clip(result.x, 0.0, 1.0)
+        candidate_sum = candidate.sum()
+
+        if candidate_sum <= 1e-12:
+            continue
+
+        candidate = candidate / candidate_sum
+        candidate_value = objective(candidate)
+
+        if candidate_value < best_value:
+            best_value = candidate_value
+            best_weights = candidate
+            best_message = str(result.message)
+
+    if best_weights is None:
+        out = inverse_volatility_weight(r[assets])
+        out.attrs["optimizer_status"] = "fallback_inverse_volatility_optimizer_failed"
+        out.attrs["optimizer_message"] = best_message
+        return out
+
+    out = pd.Series(best_weights, index=assets, name="weight")
+    out.attrs["optimizer_status"] = "success_long_only_slsqp"
+    out.attrs["optimizer_objective"] = best_value
+    out.attrs["optimizer_message"] = best_message
+
+    return out
 
     def objective(w: np.ndarray) -> float:
         return float(w @ cov @ w)
