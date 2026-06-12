@@ -63,6 +63,7 @@ def minimum_variance_weight(
     returns: pd.DataFrame,
     long_only: bool = True,
     ridge: float = 1e-4,
+    max_weight: float | None = 0.60,
 ) -> pd.Series:
     """Minimum-variance allocation with robust numerical fallbacks.
 
@@ -104,7 +105,18 @@ def minimum_variance_weight(
         return float(weights @ cov @ weights)
 
     constraints = ({"type": "eq", "fun": lambda weights: np.sum(weights) - 1.0},)
-    bounds = [(0.0, 1.0) for _ in range(n_assets)]
+    if long_only:
+        upper_bound = 1.0 if max_weight is None else float(max_weight)
+
+        if upper_bound * n_assets < 1.0:
+            raise ValueError(
+                "max_weight is too small for the number of assets: "
+                "max_weight * n_assets must be at least 1."
+            )
+
+        bounds = [(0.0, upper_bound) for _ in range(n_assets)]
+    else:
+        bounds = None
 
     equal_start = np.full(n_assets, 1.0 / n_assets)
 
@@ -242,22 +254,48 @@ def make_regime_weight_function(
     method: str = "minimum_variance",
     defensive_asset: str = "SHY",
     budgets: Mapping[int, float] | None = None,
+    exclude_defensive_from_risky: bool = True,
+    max_weight: float | None = 0.60,
 ):
-    """Factory returning a backtest-compatible strategy function."""
+    """Factory returning a backtest-compatible strategy function.
+
+    For regime-aware policies, the risky allocation should be estimated on the
+    risky universe and then blended with the defensive asset. If the defensive
+    asset is included inside the risky optimizer, minimum variance can allocate
+    almost everything to the defensive asset before the stress overlay is even
+    applied.
+    """
 
     def strategy(history: pd.DataFrame, current_regime: int | None = None) -> pd.Series:
+        optimizer_history = history.copy()
+
+        if current_regime is not None and exclude_defensive_from_risky:
+            risky_columns = [col for col in optimizer_history.columns if col != defensive_asset]
+
+            if len(risky_columns) >= 2:
+                optimizer_history = optimizer_history[risky_columns]
+
         if method == "equal_weight":
-            risky = equal_weight(history.columns)
+            risky = equal_weight(optimizer_history.columns)
         elif method == "inverse_volatility":
-            risky = inverse_volatility_weight(history)
+            risky = inverse_volatility_weight(optimizer_history)
         elif method == "minimum_variance":
-            risky = minimum_variance_weight(history)
+            risky = minimum_variance_weight(
+                optimizer_history,
+                max_weight=max_weight,
+            )
         else:
             raise ValueError(f"Unknown method: {method}")
 
         if current_regime is None:
-            return risky
+            return risky.reindex(history.columns).fillna(0.0)
+
         budget = regime_risk_budget(current_regime, budgets)
-        return stress_blend_weight(risky, defensive_asset=defensive_asset, risk_budget=budget)
+
+        return stress_blend_weight(
+            risky,
+            defensive_asset=defensive_asset,
+            risk_budget=budget,
+        ).reindex(history.columns).fillna(0.0)
 
     return strategy
