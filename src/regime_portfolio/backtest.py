@@ -22,10 +22,23 @@ class BacktestResult:
 
 
 def _rebalance_dates(index: pd.DatetimeIndex, frequency: str) -> pd.DatetimeIndex:
-    """Select the last available observation for each rebalance period."""
+    """Select the last observed timestamp in each rebalance period.
 
-    dummy = pd.Series(1, index=index)
-    return pd.DatetimeIndex(dummy.resample(frequency).last().dropna().index)
+    Pandas resampling labels periods by calendar period-end dates. For financial
+    data, the calendar period-end may not be an observed trading date. This
+    helper returns the actual last timestamp available in each period so that the
+    backtest can rebalance on dates that exist in the return index.
+    """
+    if not isinstance(index, pd.DatetimeIndex):
+        raise TypeError("index must be a pandas DatetimeIndex")
+
+    if index.empty:
+        return pd.DatetimeIndex([])
+
+    observed_dates = pd.Series(index, index=index)
+    rebalance_dates = observed_dates.resample(frequency).last().dropna()
+
+    return pd.DatetimeIndex(rebalance_dates.to_list())
 
 
 def run_backtest(
