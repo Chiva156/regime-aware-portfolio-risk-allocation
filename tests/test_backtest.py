@@ -24,26 +24,26 @@ def test_run_backtest_returns_summary_and_weights() -> None:
     assert "sharpe_0rf" in result.summary.index
 
 
-    def test_rebalance_dates_returns_actual_observed_dates():
+def test_rebalance_dates_returns_actual_observed_dates():
 
-        index = pd.to_datetime(
-            [
-                "2024-01-30",
-                "2024-01-31",
-                "2024-02-27",
-                "2024-02-28",
-                "2024-03-28",
-            ]
-        )
+    index = pd.to_datetime(
+        [
+            "2024-01-30",
+            "2024-01-31",
+            "2024-02-27",
+            "2024-02-28",
+            "2024-03-28",
+        ]
+    )
 
-        dates = _rebalance_dates(pd.DatetimeIndex(index), "ME")
+    dates = _rebalance_dates(pd.DatetimeIndex(index), "ME")
 
-        expected = pd.DatetimeIndex(
-            [
-                "2024-01-31",
-                "2024-02-28",
-                "2024-03-28",
-            ]
-        )
+    expected = pd.DatetimeIndex(
+        [
+            "2024-01-31",
+            "2024-02-28",
+            "2024-03-28",
+        ]
+    )
 
-        assert dates.equals(expected)
+    assert dates.equals(expected)
